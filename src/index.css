@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500;600&family=DM+Serif+Display&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    @apply bg-slate-950 text-slate-50 font-mono antialiased;
+    font-size: 13px;
+  }
+
+  ::-webkit-scrollbar       { width: 3px; height: 3px; }
+  ::-webkit-scrollbar-track { @apply bg-slate-900; }
+  ::-webkit-scrollbar-thumb { @apply bg-slate-400 rounded-full; }
+}
+
+@layer components {
+
+  /* ── Ticker chip ── */
+  .ticker-chip {
+    @apply px-3 py-1 rounded text-xs font-mono tracking-widest border transition-all duration-150 cursor-pointer;
+    @apply border-white/[0.07] text-slate-300 bg-white/[0.02];
+  }
+  .ticker-chip:hover,
+  .ticker-chip.active {
+    @apply border-amber-100/60 text-amber-100 bg-amber-100/[0.07];
+  }
+
+  /* ── Card ── */
+  .card {
+    @apply rounded-xl border border-white/[0.06] bg-slate-800/80 p-5;
+    background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.01) 100%);
+  }
+  .card-label {
+    font-size: 1.0rem;
+    letter-spacing: 0.18em;
+    color: #cbd5e1;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  /* ── Metric row ── */
+  .metric-row {
+    @apply flex justify-between items-center py-[5px] border-b border-white/[0.04] text-[11px] last:border-0;
+  }
+  .metric-label { @apply text-slate-300; }
+  .metric-value { @apply text-slate-50 tabular-nums; }
+  .metric-value.hi { @apply text-amber-100 font-semibold; }
+
+  /* ── Tab button ── */
+  .tab-btn {
+    @apply pb-2 text-[0.9rem] tracking-widest uppercase text-slate-300 border-b-2 border-transparent
+           transition-colors duration-150 cursor-pointer bg-transparent;
+  }
+  .tab-btn:hover  { @apply text-slate-100; }
+  .tab-btn.active { @apply text-amber-100 border-amber-100; }
+
+  /* ── Scan button ── */
+  .btn-scan {
+    @apply bg-amber-100 text-slate-950 text-[11px] font-semibold tracking-wider px-4 py-2 rounded
+           hover:bg-amber-50 active:scale-[0.98] transition-all duration-100 cursor-pointer border-none;
+  }
+
+  /* ── AI button ── */
+  .btn-ai {
+    @apply px-5 py-2.5 rounded-lg text-[11px] font-semibold tracking-wider transition-all duration-150
+           cursor-pointer border-none whitespace-nowrap;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #060810;
+    box-shadow: 0 0 20px rgba(245,158,11,0.25);
+  }
+  .btn-ai:hover:not(:disabled) {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+    box-shadow: 0 0 20.8rem rgba(245,158,11,0.4);
+    transform: translateY(-1px);
+  }
+  .btn-ai:disabled {
+    @apply opacity-40 cursor-not-allowed;
+    box-shadow: none;
+  }
+
+  /* ── Key input ── */
+  .key-input {
+    @apply bg-white/[0.04] border border-white/10 rounded px-3 py-1.5 text-[11px] text-slate-50
+           placeholder-slate-400 focus:outline-none focus:border-amber-100/50 transition-colors font-mono;
+  }
+  .key-input.error { @apply border-red-200/60; }
+
+  /* ── Level badge ── */
+  .level-badge {
+    @apply rounded-lg p-3 text-center border border-white/[0.06] bg-white/[0.02];
+  }
+  .level-badge-label { @apply text-[0.8rem] tracking-[0.12em] uppercase text-slate-400 mb-1; }
+  .level-badge-value { @apply text-[0.9rem] font-semibold tabular-nums; }
+
+  /* ── Bias chip ── */
+  .bias-chip {
+    @apply inline-block px-3 py-0.5 rounded-full text-[0.9rem] tracking-widest uppercase border font-mono;
+  }
+
+  /* ── GEX bar ── */
+  .gex-row    { @apply flex items-center gap-2 py-[2px]; }
+.gex-strike { @apply w-14 text-right text-[0.85rem] tabular-nums; }
+.gex-track  { @apply relative flex-1 h-[6px] rounded-sm overflow-hidden bg-white/[0.04]; }
+.gex-fill   { @apply rounded-sm transition-all duration-75; }
+
+}
+
+@layer utilities {
+  .text-glow-amber {
+    text-shadow: 0 0 20px rgba(245,158,11,0.5);
+  }
+  .text-glow-emerald {
+    text-shadow: 0 0 16px rgba(52,211,153,0.4);
+  }
+  .border-glow-amber {
+    box-shadow: 0 0 0 1px rgba(245,158,11,0.3), 0 0 20px rgba(245,158,11,0.1);
+  }
+  .noise {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  }
+}
