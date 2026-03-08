@@ -686,7 +686,7 @@ export default function App() {
                   <BiasChip bias={ms.bias} />
                   <span className="text-slate-800">·</span>
                   {ms.tags?.slice(0, 5).map(tag => (
-                    <span key={tag} className="text-[0.85rem] tracking-widest text-slate-400 uppercase">#{tag}</span>
+                    <span key={tag} className="text-[0.85rem] tracking-widest text-slate-400 uppercase">| {tag}</span>
                   ))}
                 </div>
                 <p className="mt-3 text-slate-400 text-[1.1rem] leading-relaxed max-w-xl">
