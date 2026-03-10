@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "npm install && concurrently -n proxy,vite -c cyan,green \"node proxy/server.js\" \"vite\"",
     "proxy": "node proxy/server.js",
+    "start": "concurrently \"npm run proxy\" \"npm run dev\"",
     "build": "vite build",
     "preview": "vite preview"
   },

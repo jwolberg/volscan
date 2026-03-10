@@ -46,8 +46,14 @@
   .metric-row {
     @apply flex justify-between items-center py-[5px] border-b border-white/[0.04] text-[11px] last:border-0;
   }
-  .metric-label { @apply text-slate-300; }
-  .metric-value { @apply text-slate-50 tabular-nums; }
+  .metric-label { 
+    @apply text-slate-300; 
+  font-size: 0.85rem;
+}
+  .metric-value { 
+    @apply text-slate-50 tabular-nums; 
+    font-size: 0.85rem;
+  }
   .metric-value.hi { @apply text-amber-100 font-semibold; }
 
   /* ── Tab button ── */

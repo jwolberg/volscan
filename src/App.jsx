@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
-const DEMO_TICKERS = ["AAPL", "META", "AMZN", "XOM", "GM", "MCD", "KO"];
 const PROXY = "http://localhost:3001";
+const DEMO_TICKERS = ["AAPL", "META", "AMZN", "XOM", "GM", "MCD", "KO"];
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
 
@@ -128,6 +128,7 @@ function PriceDispersionChart({ kl }) {
     return <p className="text-slate-400 text-[12px]">No price levels available.</p>;
   }
 
+  
   const vals = levels.map(x => Number(x.value));
   const min = Math.min(...vals);
   const max = Math.max(...vals);
@@ -150,6 +151,7 @@ function PriceDispersionChart({ kl }) {
   const plus1dTop = plus1d != null ? posFromTop(plus1d) : null;
   const minus1dTop = minus1d != null ? posFromTop(minus1d) : null;
   const flipTop = gammaFlip != null ? posFromTop(gammaFlip) : null;
+  
 
   const flipClosePct =
     spot != null && gammaFlip != null && spot !== 0
@@ -161,6 +163,7 @@ function PriceDispersionChart({ kl }) {
   // Main vertical rail
   const coreX = 140;
 
+  
   // Volatility-style spacing: proportional to sqrt(time)
   const maxDays = 21;
   const maxSpread = 170; // furthest right distance from rail for 1M
@@ -217,18 +220,21 @@ function PriceDispersionChart({ kl }) {
         )}
 
         {/* flip highlight if near spot */}
-        {flipVeryClose && spotTop != null && flipTop != null && (
+        {flipTop != null && (
           <div
-            className="absolute rounded-lg"
-            style={{
-              left: `${coreX - 12}px`,
-              right: "120px",
-              top: `${Math.min(spotTop, flipTop) - 2}%`,
-              height: `${Math.max(Math.abs(spotTop - flipTop), 4)}%`,
-              background: "rgba(245,158,11,0.10)",
-              boxShadow: "0 0 24px rgba(245,158,11,0.18), inset 0 0 0 1px rgba(245,158,11,0.18)",
-            }}
-          />
+            className="absolute left-0 right-0"
+            style={{ top: `${flipTop}%` }}
+          >
+            <div
+              className="absolute border-t border-dashed"
+              style={{
+                left: `${coreX - 6}px`,
+                right: "110px",
+                borderColor: "rgba(245,158,11,0.45)",
+                borderWidth: "2px",
+                            }}
+            />
+          </div>
         )}
 
         {/* rails */}
@@ -310,8 +316,8 @@ function PriceDispersionChart({ kl }) {
                   <div
                     className="rounded-full border border-white/10"
                     style={{
-                      width: isSpot || isFlip ? 14 : 10,
-                      height: isSpot || isFlip ? 14 : 10,
+                      width: isSpot || isFlip ? 8 : 10,
+                      height: isSpot || isFlip ? 8 : 10,
                       background: lvl.color,
                       boxShadow: glow
                         ? "0 0 0 6px rgba(245,158,11,0.12), 0 0 22px rgba(245,158,11,0.45)"
@@ -680,7 +686,7 @@ export default function App() {
                   <BiasChip bias={ms.bias} />
                   <span className="text-slate-800">·</span>
                   {ms.tags?.slice(0, 5).map(tag => (
-                    <span key={tag} className="text-[0.85rem] tracking-widest text-slate-400 uppercase">#{tag}</span>
+                    <span key={tag} className="text-[0.85rem] tracking-widest text-slate-400 uppercase">| {tag}</span>
                   ))}
                 </div>
                 <p className="mt-3 text-slate-400 text-[1.1rem] leading-relaxed max-w-xl">
