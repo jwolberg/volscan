@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 
 const PROXY = "http://localhost:3001";
 const DEMO_TICKERS = ["AAPL", "META", "AMZN", "XOM", "GM", "MCD", "KO"];
+const GAMMA_SERIES = [
+  { key: "nearest", color: "#f59e0b" },
+  { key: "first_weekly", color: "#22c55e" },
+  { key: "first_monthly", color: "#3b82f6" },
+  { key: "all_other_expiries", color: "#94a3b8" },
+];
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
 
@@ -19,14 +25,14 @@ async function apiFetch(path) {
 async function loadTickerData(ticker) {
   const [ms, gex] = await Promise.all([
     apiFetch(`/tickers/${ticker}/market-structure`),
-    apiFetch(`/tickers/${ticker}/curves/gex_by_strike?exp=combined`),
+    apiFetch(`/tickers/${ticker}/curves/gamma/expirations`),
   ]);
   return { ms, gex };
 }
 
 // Anthropic — routes through proxy POST /anthropic (key stays in .env)
-async function getAIBrief(ticker, msData, gexTotals) {
-  const res = await fetch(`${PROXY}/anthropic`, {
+async function getAIBrief(ticker, msData, gammaExpirations) {
+    const res = await fetch(`${PROXY}/anthropic`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -58,8 +64,8 @@ One sentence. Direct. No hedging.
 Under 300 words. Reference actual numbers.`,
       messages: [{
         role: "user",
-        content: `Analyze ${ticker}:\n\n${JSON.stringify({ market_structure: msData, gex_totals: gexTotals }, null, 2)}`
-      }]
+        content: `Analyze ${ticker}:\n\n${JSON.stringify({ market_structure: msData, gamma_expirations: gammaExpirations }, null, 2)}`
+            }]
     })
   });
   const d = await res.json();
@@ -369,11 +375,115 @@ function PriceDispersionChart({ kl }) {
     </div>
   );
 }
+function GammaLegend({ expirations }) {
+  return (
+    <div className="flex flex-wrap gap-3 mb-4 text-[0.85rem] text-slate-400">
+      {GAMMA_SERIES.map(s => {
+        const raw = expirations?.[s.key];
+        const date = s.key === "all_other_expiries" ? "Other Exp" : raw;
+
+        return (
+          <div key={s.key} className="flex items-center gap-1.5">
+            <span
+              className="w-3 h-3 rounded-sm"
+              style={{ background: s.color }}
+            />
+            <span>{date || s.key}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function fmtCompact(n) {
+  return Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(n);
+}
+
+function GammaStackedBar({ point, maxAbs, price, expirations }) {
+  
+  const series = GAMMA_SERIES.map(s => ({
+    ...s,
+    value: point[s.key] ?? 0,
+    hoverLabel:
+      s.key === "all_other_expiries"
+        ? "Other Exp"
+        : (expirations?.[s.key] || s.key),
+  }));
+
+  const combined = point.combined ?? 0;
+  const isNear = price ? Math.abs(point.strike - price) / price < 0.03 : false;
+
+  const positive = series.filter(s => s.value > 0);
+  const negative = series.filter(s => s.value < 0);
+
+  let posOffset = 50;
+  let negOffset = 50;
+
+  return (
+    <div className={`gex-row ${isNear ? "opacity-100" : "opacity-30"}`}>
+      <span className={`gex-strike ${isNear ? "text-slate-200" : "text-slate-400"}`}>
+        {point.strike}
+      </span>
+
+      <div className="gex-track relative">
+        <div className="absolute inset-y-0 left-1/2 w-px bg-white/10 -translate-x-1/2" />
+
+        {/* negative stack: grows left */}
+        {negative.map((seg) => {
+          const pct = maxAbs > 0 ? (Math.abs(seg.value) / maxAbs) * 50 : 0;
+          negOffset -= pct;
+
+          return (
+            <div
+              key={seg.key}
+              className="absolute top-0 h-full"
+              title={`${point.strike} • ${seg.hoverLabel}: ${fmtCompact(seg.value)}`}
+              style={{
+                left: `${negOffset}%`,
+                width: `${pct}%`,
+                background: seg.color,
+              }}
+            />
+          );
+        })}
+
+        {/* positive stack: grows right */}
+        {positive.map((seg) => {
+          const pct = maxAbs > 0 ? (Math.abs(seg.value) / maxAbs) * 50 : 0;
+          const left = posOffset;
+          posOffset += pct;
+
+          return (
+            <div
+              key={seg.key}
+              className="absolute top-0 h-full"
+             title={`${point.strike} • ${seg.hoverLabel}: ${fmtCompact(seg.value)}`}
+              style={{
+                left: `${left}%`,
+                width: `${pct}%`,
+                background: seg.color,
+              }}
+            />
+          );
+        })}
+      </div>
+
+      <span className={`w-16 text-right text-[0.95rem] tabular-nums font-bold ${combined >= 0 ? "text-red-400" : "text-violet-400"}`}>
+        {combined > 0 ? "+" : ""}
+        {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(combined)}
+      </span>
+    </div>
+  );
+}
 
 function GexBar({ point, maxAbs, price }) {
-  const value = point.net ?? 0;
+  const value = point.combined ?? 0;
   const pct   = maxAbs > 0 ? (Math.abs(value) / maxAbs) * 50 : 0;
-  const isNear = Math.abs(point.strike - price) / price < 0.03;
+  const isNear = price ? Math.abs(point.strike - price) / price < 0.03 : false;
   const isPos  = value >= 0;
 
   return (
@@ -383,13 +493,16 @@ function GexBar({ point, maxAbs, price }) {
       </span>
       <div className="gex-track relative">
         <div className="absolute inset-y-0 left-1/2 w-px bg-white/10 -translate-x-1/2" />
-        <div className="gex-fill absolute top-0 h-full rounded-sm" style={{
-          width: `${pct}%`,
-          left: isPos ? "50%" : `${50 - pct}%`,
-          background: isPos
-            ? "linear-gradient(90deg,#dc2626,#f87171)"
-            : "linear-gradient(90deg,#7c3aed,#a78bfa)",
-        }} />
+        <div
+          className="gex-fill absolute top-0 h-full rounded-sm"
+          style={{
+            width: `${pct}%`,
+            left: isPos ? "50%" : `${50 - pct}%`,
+            background: isPos
+              ? "linear-gradient(90deg,#dc2626,#f87171)"
+              : "linear-gradient(90deg,#7c3aed,#a78bfa)",
+          }}
+        />
       </div>
       <span className={`w-16 text-right text-[0.95rem] tabular-nums font-bold ${isPos ? "text-red-400" : "text-violet-400"}`}>
         {value > 0 ? "+" : ""}
@@ -485,7 +598,7 @@ export default function App() {
     setAiAnalysis(null);
     setActiveTab("ai");
     try {
-      const brief = await getAIBrief(ticker, msData?.data, gexData?.data?.totals);
+      const brief = await getAIBrief(ticker, msData?.data, gexData?.data);
       setAiAnalysis(brief);
     } catch (e) {
       setAiAnalysis("Error: " + e.message);
@@ -504,11 +617,12 @@ export default function App() {
   const kl          = ms?.key_levels;
   const price       = kl?.spot || gexData?.data?.price;
   const gexPoints   = gexData?.data?.points || [];
-  const maxAbs      = Math.max(...gexPoints.map(p => Math.abs(p.net || 0)), 1);
+  const maxAbs      = Math.max(...gexPoints.map(p => Math.abs(p.combined || 0)), 1);
   const nearStrikes = gexPoints
-    .filter(p => price && Math.abs(p.strike - price) / price < 0.08)
-    .sort((a, b) => a.strike - b.strike);
-
+  .filter(p => price && Math.abs(p.strike - price) / price < 0.08)
+  .sort((a, b) => a.strike - b.strike);
+  const expirations = gexData?.data?.expiries || {};
+  console.log({expirations});
   const TABS = [
     { id: "structure", label: "Structure" },
     { id: "levels",    label: "Levels"    },
@@ -803,16 +917,27 @@ export default function App() {
             {/* ── GEX ── */}
             {activeTab === "gex" && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card title="GEX By Strike — ±8% from spot" accent="#34d399">
-                  <p className="text-[0.95rem] text-slate-400 mb-4 leading-relaxed">
-                    Red = positive net GEX · Purple = negative net GEX
-                  </p>
+                <Card title="Gamma By Strike — Expiration Stacks ±8% from spot" accent="#34d399">
+                <p className="text-[0.95rem] text-slate-400 mb-4 leading-relaxed">
+                  Each strike is stacked by expiration bucket around zero. Right of center = positive gamma, left = negative gamma.
+                </p>
+                <GammaLegend expirations={expirations} />
+
+                <p className="text-[0.95rem] text-slate-400 mb-4 leading-relaxed">
+                  Stacked gamma by expiration. Right = positive, left = negative.
+                </p>
                   {nearStrikes.length > 0 ? (
                     <div className="space-y-0.5">
                       {[...nearStrikes]
                         .sort((a, b) => b.strike - a.strike)
                         .map((p) => (
-                          <GexBar key={p.strike} point={p} maxAbs={maxAbs} price={price} />
+                          <GammaStackedBar
+                            key={p.strike}
+                            point={p}
+                            maxAbs={maxAbs}
+                            price={price}
+                            expirations={expirations}
+                          />
                         ))}
                     </div>
                   ) : (
@@ -821,19 +946,19 @@ export default function App() {
                 </Card>
 
                 <Card title="GEX Summary" accent="#34d399">
-                  {gexData?.data?.totals ? (
-                    <>
-                      <MetricRow label="Flip Price"
-                                 value={fmt$(gexData.data.totals.gex_flip_price)} highlight />
-                      <MetricRow label="GEX / 1% Move"
-                                 value={gexData.data.totals.gex_value_per_1pct
-                                   ? `$${(gexData.data.totals.gex_value_per_1pct/1e6).toFixed(0)}M` : "—"} />
-                      <MetricRow label="Put / Call OI"
-                                 value={gexData.data.totals.put_call_oi?.toFixed(2)} />
-                    </>
-                  ) : (
-                    <p className="text-slate-400 text-[1.1rem]">No totals available.</p>
-                  )}
+                  <>
+                    <MetricRow label="Flip Price" value={fmt$(kl?.gamma_flip)} highlight />
+                    <MetricRow
+                      label="GEX / 1% Move"
+                      value={sf?.gamma_notional_per_1pct_move_usd
+                        ? `$${(sf.gamma_notional_per_1pct_move_usd / 1e6).toFixed(0)}M`
+                        : "—"}
+                    />
+                    <MetricRow
+                      label="% Expiring Near"
+                      value={fmtPct(sf?.pct_gamma_expiring_nearest_expiry)}
+                    />
+                  </>
 
                   {ms.drivers?.gamma_tone && (
                     <div className="mt-5 p-3.5 rounded-lg border border-white/[0.05] bg-slate-400/40">
