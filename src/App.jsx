@@ -404,7 +404,6 @@ function fmtCompact(n) {
 }
 
 function GammaStackedBar({ point, maxAbs, price, expirations }) {
-  
   const series = GAMMA_SERIES.map(s => ({
     ...s,
     value: point[s.key] ?? 0,
@@ -415,24 +414,22 @@ function GammaStackedBar({ point, maxAbs, price, expirations }) {
   }));
 
   const combined = point.combined ?? 0;
-  const isNear = price ? Math.abs(point.strike - price) / price < 0.03 : false;
 
   const positive = series.filter(s => s.value > 0);
   const negative = series.filter(s => s.value < 0);
-
+  
   let posOffset = 50;
   let negOffset = 50;
 
   return (
-    <div className={`gex-row ${isNear ? "opacity-100" : "opacity-30"}`}>
-      <span className={`gex-strike ${isNear ? "text-slate-200" : "text-slate-400"}`}>
+    <div className="gex-row">
+      <span className="gex-strike text-slate-200">
         {point.strike}
       </span>
 
       <div className="gex-track relative">
         <div className="absolute inset-y-0 left-1/2 w-px bg-white/10 -translate-x-1/2" />
 
-        {/* negative stack: grows left */}
         {negative.map((seg) => {
           const pct = maxAbs > 0 ? (Math.abs(seg.value) / maxAbs) * 50 : 0;
           negOffset -= pct;
@@ -441,7 +438,10 @@ function GammaStackedBar({ point, maxAbs, price, expirations }) {
             <div
               key={seg.key}
               className="absolute top-0 h-full"
-              title={`${point.strike} • ${seg.hoverLabel}: ${fmtCompact(seg.value)}`}
+              title={`${point.strike} • ${seg.hoverLabel}: ${Intl.NumberFormat("en-US", {
+                notation: "compact",
+                maximumFractionDigits: 1,
+              }).format(seg.value)}`}
               style={{
                 left: `${negOffset}%`,
                 width: `${pct}%`,
@@ -451,7 +451,6 @@ function GammaStackedBar({ point, maxAbs, price, expirations }) {
           );
         })}
 
-        {/* positive stack: grows right */}
         {positive.map((seg) => {
           const pct = maxAbs > 0 ? (Math.abs(seg.value) / maxAbs) * 50 : 0;
           const left = posOffset;
@@ -461,7 +460,10 @@ function GammaStackedBar({ point, maxAbs, price, expirations }) {
             <div
               key={seg.key}
               className="absolute top-0 h-full"
-             title={`${point.strike} • ${seg.hoverLabel}: ${fmtCompact(seg.value)}`}
+              title={`${point.strike} • ${seg.hoverLabel}: ${Intl.NumberFormat("en-US", {
+                notation: "compact",
+                maximumFractionDigits: 1,
+              }).format(seg.value)}`}
               style={{
                 left: `${left}%`,
                 width: `${pct}%`,
@@ -618,9 +620,18 @@ export default function App() {
   const price       = kl?.spot || gexData?.data?.price;
   const gexPoints   = gexData?.data?.points || [];
   const maxAbs      = Math.max(...gexPoints.map(p => Math.abs(p.combined || 0)), 1);
+  console.log('supporting factors:', sf);
+  const oneWeekMovePct = sf?.expected_move_pct_1w != null
+    ? Number(sf.expected_move_pct_1w) / 100
+    : null;
+
+  const displayWindowPct = oneWeekMovePct != null
+    ? Math.min(Math.max(oneWeekMovePct * 2, 0.03), 0.08)
+    : 0.05;
+
   const nearStrikes = gexPoints
-  .filter(p => price && Math.abs(p.strike - price) / price < 0.08)
-  .sort((a, b) => a.strike - b.strike);
+    .filter(p => price && Math.abs(p.strike - price) / price < displayWindowPct)
+    .sort((a, b) => a.strike - b.strike);
   const expirations = gexData?.data?.expiries || {};
   console.log({expirations});
   const TABS = [
@@ -629,6 +640,7 @@ export default function App() {
     { id: "gex",       label: "GEX"       },
     { id: "ai",        label: "⚡ AI Brief"},
   ];
+  const hiddenStrikeCount = gexPoints.length - nearStrikes.length;
 
   return (
     <div className="min-h-screen bg-slate-950 bg-grid-pattern bg-grid font-mono text-slate-300" style={{background:"#020617"}}>
@@ -917,15 +929,16 @@ export default function App() {
             {/* ── GEX ── */}
             {activeTab === "gex" && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card title="Gamma By Strike — Expiration Stacks ±8% from spot" accent="#34d399">
+                
+                <Card title="Gamma By Strike — Expiration Stacks ±1w STD from spot" accent="#34d399">
+                
+               
                 <p className="text-[0.95rem] text-slate-400 mb-4 leading-relaxed">
-                  Each strike is stacked by expiration bucket around zero. Right of center = positive gamma, left = negative gamma.
+                  Gamma stacked by expiration at each strike: 
                 </p>
                 <GammaLegend expirations={expirations} />
-
-                <p className="text-[0.95rem] text-slate-400 mb-4 leading-relaxed">
-                  Stacked gamma by expiration. Right = positive, left = negative.
-                </p>
+                
+                
                   {nearStrikes.length > 0 ? (
                     <div className="space-y-0.5">
                       {[...nearStrikes]
@@ -943,6 +956,13 @@ export default function App() {
                   ) : (
                     <p className="text-slate-400 text-[1.1rem]">No GEX data available.</p>
                   )}
+                  <p className="text-[0.95rem] text-slate-400 mb-4 leading-relaxed">
+                  Left = negative gamma | Right = positive  gamma
+                </p>
+                  <p className="text-[0.9rem] text-slate-500 mb-3">
+                  (Showing {nearStrikes.length} relevant strikes
+                  {hiddenStrikeCount > 0 ? ` • ${hiddenStrikeCount} distant strikes hidden` : ""})
+                </p>
                 </Card>
 
                 <Card title="GEX Summary" accent="#34d399">
