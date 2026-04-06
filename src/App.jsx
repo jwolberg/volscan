@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PROXY } from "./api/apiFetch.js";
 import { loadTickerData } from "./api/loadTickerData.js";
 import { getAIBrief, parseMarkdown } from "./api/getAIBrief.js";
@@ -413,6 +413,136 @@ function GammaStackedBar({ point, maxAbs, price, expirations }) {
   );
 }
 
+// ─── Chat Drawer ──────────────────────────────────────────────────────────────
+// Reuses POST /anthropic — same endpoint as AI Brief, different system prompt.
+
+function ChatDrawer({ open, onClose, ticker, msData, aiAnalysis }) {
+  const [messages, setMessages] = useState([]); // [{ role: "user"|"assistant", text }]
+  const [draft, setDraft]       = useState("");
+  const [busy, setBusy]         = useState(false);
+  const [err, setErr]           = useState(null);
+  const bottomRef               = useRef(null);
+
+  // Scroll to latest message
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, open]);
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || busy) return;
+
+    const nextMessages = [...messages, { role: "user", text }];
+    setMessages(nextMessages);
+    setDraft("");
+    setBusy(true);
+    setErr(null);
+
+    try {
+      // Build the Anthropic messages array from conversation history
+      const apiMessages = nextMessages.map(m => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: m.text,
+      }));
+
+      const res = await fetch(`${PROXY}/anthropic`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1024,
+          // Give Claude context about what the user is looking at
+          system: [
+            `You are a sharp options trading assistant. The user is viewing ${ticker} on VOLSCAN.`,
+            msData   ? `Market structure data: ${JSON.stringify(msData?.data ?? msData, null, 0)}.` : null,
+            aiAnalysis ? `AI Brief already generated for this ticker:\n${aiAnalysis}` : null,
+            `Answer concisely and reference actual price levels when relevant.`,
+          ].filter(Boolean).join(" "),
+          messages: apiMessages,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+      const reply = data.content?.map(b => b.text || "").join("\n") || "No response.";
+      setMessages(prev => [...prev, { role: "assistant", text: reply }]);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+
+      {/* Drawer */}
+      <div className="chat-drawer">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400 text-base">⚡</span>
+            <span className="text-[0.85rem] tracking-[0.18em] text-slate-300 uppercase">Chat</span>
+            {ticker && <span className="text-[0.85rem] text-slate-500 font-mono">· {ticker}</span>}
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors text-lg leading-none">✕</button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {messages.length === 0 && (
+            <p className="text-slate-500 text-[0.85rem] text-center mt-8 tracking-wide">
+              Ask anything about {ticker || "the market"} structure…
+            </p>
+          )}
+          {messages.map((m, i) => (
+            <div key={i} className={`chat-bubble ${m.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"}`}>
+              <p className="text-[0.85rem] leading-relaxed whitespace-pre-wrap">{m.text}</p>
+            </div>
+          ))}
+          {busy && (
+            <div className="chat-bubble chat-bubble-assistant">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 border border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+                <span className="text-slate-500 text-[0.8rem] tracking-wider">Thinking…</span>
+              </div>
+            </div>
+          )}
+          {err && (
+            <p className="text-red-400 text-[0.8rem] px-2">⚠ {err}</p>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div className="px-4 py-3 border-t border-white/[0.06]">
+          <div className="flex gap-2">
+            <input
+              className="chat-input"
+              placeholder="Ask a question…"
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+              disabled={busy}
+            />
+            <button
+              onClick={send}
+              disabled={busy || !draft.trim()}
+              className="btn-scan disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            >
+              SEND
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function Spinner() {
   return (
     <div className="flex flex-col items-center gap-3 py-20">
@@ -434,6 +564,9 @@ export default function App() {
   const [aiLoading, setAiLoading]   = useState(false);
   const [error, setError]           = useState(null);
   const [activeTab, setActiveTab]   = useState("structure");
+
+  // ── Chat ──
+  const [chatOpen, setChatOpen] = useState(false);
 
   // ── Key management ──
   const [keyStatus, setKeyStatus]   = useState({ tv: null, anthropic: null }); // null=unknown
@@ -597,6 +730,11 @@ export default function App() {
               {aiLoading ? "ANALYZING…" : "⚡ AI BRIEF"}
             </button>
           )}
+
+          {/* Chat button */}
+          <button onClick={() => setChatOpen(true)} className="btn-chat">
+            💬 CHAT
+          </button>
         </div>
 
         {/* API key subrow */}
@@ -903,9 +1041,14 @@ export default function App() {
                         <p className="text-slate-400 text-[1.0rem] mt-0.5">{ticker}</p>
                       </div>
                     </div>
-                    {!aiAnalysis && !aiLoading && (
-                      <button onClick={runAI} className="btn-ai">GENERATE</button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {!aiAnalysis && !aiLoading && (
+                        <button onClick={runAI} className="btn-ai">GENERATE</button>
+                      )}
+                      {aiAnalysis && (
+                        <button onClick={() => setChatOpen(true)} className="btn-chat">💬 CHAT</button>
+                      )}
+                    </div>
                   </div>
 
                   {aiLoading && (
@@ -946,6 +1089,15 @@ export default function App() {
           {new Date().toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })}
         </span>
       </footer>
+
+      {/* ══ CHAT DRAWER ═════════════════════════════════════════════════════ */}
+      <ChatDrawer
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        ticker={ticker}
+        msData={msData}
+        aiAnalysis={aiAnalysis}
+      />
     </div>
   );
 }

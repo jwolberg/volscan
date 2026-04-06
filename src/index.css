@@ -39,7 +39,6 @@
     letter-spacing: 0.18em;
     color: #cbd5e1;
     text-transform: uppercase;
-    margin-bottom: 0.75rem;
   }
 
   /* ── Metric row ── */
@@ -105,6 +104,45 @@
   /* ── Bias chip ── */
   .bias-chip {
     @apply inline-block px-3 py-0.5 rounded-full text-[0.9rem] tracking-widest uppercase border font-mono;
+  }
+
+  /* ── Chat button ── */
+  .btn-chat {
+    @apply px-4 py-2 rounded-lg text-[11px] font-semibold tracking-wider transition-all duration-150
+           cursor-pointer border whitespace-nowrap;
+    border-color: rgba(255,255,255,0.10);
+    color: #94a3b8;
+    background: rgba(255,255,255,0.03);
+  }
+  .btn-chat:hover {
+    border-color: rgba(245,158,11,0.35);
+    color: #fde68a;
+    background: rgba(245,158,11,0.05);
+  }
+
+  /* ── Chat drawer ── */
+  .chat-drawer {
+    @apply fixed right-0 top-0 h-full z-50 flex flex-col bg-slate-900 border-l border-white/[0.06];
+    width: 680px;
+    box-shadow: -8px 0 40px rgba(0,0,0,0.5);
+  }
+
+  /* ── Chat bubbles ── */
+  .chat-bubble {
+    @apply rounded-xl px-3 py-2.5 max-w-[90%];
+  }
+  .chat-bubble-user {
+    @apply ml-auto bg-amber-400/[0.10] border border-amber-400/[0.12] text-slate-200;
+  }
+  .chat-bubble-assistant {
+    @apply mr-auto bg-slate-800/80 border border-white/[0.05] text-slate-300;
+  }
+
+  /* ── Chat input ── */
+  .chat-input {
+    @apply flex-1 bg-white/[0.04] border border-white/[0.08] rounded px-3 py-2 text-[0.85rem]
+           text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-400/40
+           transition-colors font-mono;
   }
 
   /* ── GEX bar ── */
