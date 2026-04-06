@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import { PROXY } from "./api/apiFetch.js";
+import { loadTickerData } from "./api/loadTickerData.js";
+import { getAIBrief, parseMarkdown } from "./api/getAIBrief.js";
 
-const PROXY = "http://localhost:3001";
 const DEMO_TICKERS = ["AAPL", "META", "AMZN", "XOM", "GM", "MCD", "KO"];
 const GAMMA_SERIES = [
   { key: "nearest", color: "#f59e0b" },
@@ -8,77 +10,6 @@ const GAMMA_SERIES = [
   { key: "first_monthly", color: "#3b82f6" },
   { key: "all_other_expiries", color: "#94a3b8" },
 ];
-
-// ─── Data fetching ────────────────────────────────────────────────────────────
-
-// TV API — proxy serves at /tv/tickers/{TICKER}/...
-async function apiFetch(path) {
-  const url = `${PROXY}/tv${path}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}${text ? ": " + text.slice(0, 120) : ""}`);
-  }
-  return res.json();
-}
-
-async function loadTickerData(ticker) {
-  const [ms, gex] = await Promise.all([
-    apiFetch(`/tickers/${ticker}/market-structure`),
-    apiFetch(`/tickers/${ticker}/curves/gamma/expirations`),
-  ]);
-  return { ms, gex };
-}
-
-// Anthropic — routes through proxy POST /anthropic (key stays in .env)
-async function getAIBrief(ticker, msData, gammaExpirations) {
-    const res = await fetch(`${PROXY}/anthropic`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      system: `You are a professional options trader and market structure analyst. Analyze the JSON data and give a sharp, actionable trading brief.
-
-Use exactly these headers:
-
-**REGIME SNAPSHOT**
-1-2 sentences on what the current structure means right now.
-
-**KEY RISKS**
-• Risk 1
-• Risk 2
-• Risk 3
-
-**TRADE SETUP IDEAS**
-• Setup 1 (specific strikes/levels)
-• Setup 2
-• Setup 3
-
-**WATCH LEVELS**
-Exact gamma flip, sigma levels, what triggers at each.
-
-**BOTTOM LINE**
-One sentence. Direct. No hedging.
-
-Under 300 words. Reference actual numbers.`,
-      messages: [{
-        role: "user",
-        content: `Analyze ${ticker}:\n\n${JSON.stringify({ market_structure: msData, gamma_expirations: gammaExpirations }, null, 2)}`
-            }]
-    })
-  });
-  const d = await res.json();
-  return d.content?.map(b => b.text || "").join("\n") || "No response.";
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function parseMarkdown(text) {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br/>");
-}
 function fmt$(n)           { return n != null ? `$${Number(n).toFixed(2)}` : "—"; }
 function fmtPct(n, pre="") { return n != null ? `${pre}${Number(n).toFixed(2)}%` : "—"; }
 
@@ -477,38 +408,6 @@ function GammaStackedBar({ point, maxAbs, price, expirations }) {
       <span className={`w-16 text-right text-[0.95rem] tabular-nums font-bold ${combined >= 0 ? "text-red-400" : "text-violet-400"}`}>
         {combined > 0 ? "+" : ""}
         {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(combined)}
-      </span>
-    </div>
-  );
-}
-
-function GexBar({ point, maxAbs, price }) {
-  const value = point.combined ?? 0;
-  const pct   = maxAbs > 0 ? (Math.abs(value) / maxAbs) * 50 : 0;
-  const isNear = price ? Math.abs(point.strike - price) / price < 0.03 : false;
-  const isPos  = value >= 0;
-
-  return (
-    <div className={`gex-row ${isNear ? "opacity-100" : "opacity-30"}`}>
-      <span className={`gex-strike ${isNear ? "text-slate-200" : "text-slate-400"}`}>
-        {point.strike}
-      </span>
-      <div className="gex-track relative">
-        <div className="absolute inset-y-0 left-1/2 w-px bg-white/10 -translate-x-1/2" />
-        <div
-          className="gex-fill absolute top-0 h-full rounded-sm"
-          style={{
-            width: `${pct}%`,
-            left: isPos ? "50%" : `${50 - pct}%`,
-            background: isPos
-              ? "linear-gradient(90deg,#dc2626,#f87171)"
-              : "linear-gradient(90deg,#7c3aed,#a78bfa)",
-          }}
-        />
-      </div>
-      <span className={`w-16 text-right text-[0.95rem] tabular-nums font-bold ${isPos ? "text-red-400" : "text-violet-400"}`}>
-        {value > 0 ? "+" : ""}
-        {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value)}
       </span>
     </div>
   );
