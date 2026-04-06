@@ -25,12 +25,19 @@ The UI is intentionally terminal-dense: monospace fonts, dark navy backgrounds, 
 ```
 volscan/
 ├── proxy/
-│   └── server.js        # Express proxy — TV API + Anthropic API
+│   └── server.js              # Express proxy — TV API + Anthropic API
 ├── src/
-│   ├── App.jsx          # React UI (single file)
-│   ├── index.css        # Tailwind + component layer
-│   └── main.jsx         # React entry point
-├── .env                 # API keys (gitignored)
+│   ├── api/
+│   │   ├── apiFetch.js        # Base fetch wrapper + PROXY constant
+│   │   ├── apiFetch.test.js
+│   │   ├── getAIBrief.js      # Claude AI brief request + markdown parser
+│   │   ├── getAIBrief.test.js
+│   │   ├── loadTickerData.js  # Fetches market-structure + gamma expirations
+│   │   └── loadTickerData.test.js
+│   ├── App.jsx                # React UI
+│   ├── index.css              # Tailwind + component layer
+│   └── main.jsx               # React entry point
+├── .env                       # API keys (gitignored)
 ├── index.html
 ├── package.json
 ├── tailwind.config.mjs
@@ -78,9 +85,9 @@ Single-file React component, no external UI library. Styled entirely with Tailwi
 
 2. **Levels** — Price Dispersion chart: a custom SVG-free absolute-positioned visualization showing all sigma levels (±1σ 1D/1W/1M) and the gamma flip on a vertical price rail with vol-cone spread geometry. Highlights when flip is near spot. Flip Context card with distance, gamma tone label, and sentiment.
 
-3. **GEX** — Horizontal bi-directional bar chart (red = positive net GEX / dealer buying pressure, purple = negative net GEX / dealer selling pressure), centered at zero, sorted highest-to-lowest strike. Bars within 3% of spot are full opacity; outside 8% are filtered out entirely. GEX Summary card with flip price, GEX per 1% move, put/call OI, and gamma tone callout.
+3. **GEX** — Horizontal bi-directional bar chart (red = positive net GEX / dealer buying pressure, purple = negative net GEX / dealer selling pressure), centered at zero, sorted highest-to-lowest strike. Bars within 3% of spot are full opacity; outside 8% are filtered out entirely. Supports **multiple expirations** displayed as color-coded overlapping bars: nearest (amber), first weekly (green), first monthly (blue), all other expiries (slate). GEX Summary card with flip price, GEX per 1% move, put/call OI, and gamma tone callout.
 
-4. **⚡ AI Brief** — Sends the full market structure JSON and GEX totals to Claude (`claude-sonnet-4-20250514`) via the local proxy. Returns a structured brief with five sections: REGIME SNAPSHOT, KEY RISKS, TRADE SETUP IDEAS, WATCH LEVELS, BOTTOM LINE. Under 300 words. References actual price levels.
+4. **⚡ AI Brief** — Sends the full market structure JSON and gamma expirations to Claude (`claude-sonnet-4-6`) via the local proxy. Returns a structured brief with five sections: REGIME SNAPSHOT, KEY RISKS, TRADE SETUP IDEAS, WATCH LEVELS, BOTTOM LINE. Under 300 words. References actual price levels.
 
 **Header:**
 - Wordmark + ticker search input + SCAN button
@@ -125,6 +132,18 @@ Opens at **http://localhost:5173**. The proxy starts automatically on **http://l
 
 Keys can also be set from the UI at runtime — paste into the TV/Anthropic inputs in the header and click SET. This updates the proxy's in-memory keys for the current session without touching `.env` or restarting.
 
+**4. [ Optional ] Override proxy URL**
+
+If the proxy runs on a non-default port or host, set `VITE_PROXY_URL` in your `.env`:
+```env
+VITE_PROXY_URL=http://localhost:3001
+```
+
+**5. Run tests**
+```bash
+npm test
+```
+
 ---
 
 ### Demo Tickers
@@ -144,7 +163,8 @@ Without a TV API key (or with `TV_DEMO=1`), the following tickers are available 
 | Env management | dotenv |
 | Dev orchestration | concurrently |
 | Data source | [Trading Volatility API](https://tradingvolatility.net) |
-| AI | Anthropic Claude (`claude-sonnet-4-20250514`) |
+| AI | Anthropic Claude (`claude-sonnet-4-6`) |
+| Test runner | Vitest |
 
 ---
 
