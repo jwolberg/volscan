@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { PROXY } from "./api/apiFetch.js";
 import { loadTickerData } from "./api/loadTickerData.js";
 import { getAIBrief, parseMarkdown } from "./api/getAIBrief.js";
+import { getNewsData } from "./api/getNewsData.js";
 
 const DEMO_TICKERS = ["AAPL", "META", "AMZN", "XOM", "GM", "MCD", "KO"];
 const GAMMA_SERIES = [
@@ -543,6 +544,107 @@ function ChatDrawer({ open, onClose, ticker, msData, aiAnalysis }) {
   );
 }
 
+function timeAgo(unix) {
+  const diff = Math.max(0, Math.floor(Date.now() / 1000 - unix));
+  if (diff < 60)    return "just now";
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function NewsArticleRow({ article }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border-b border-white/[0.04] pb-4 last:border-0 last:pb-0">
+      <div className="flex items-start justify-between gap-3">
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="text-left flex-1 cursor-pointer bg-transparent border-none p-0 group"
+        >
+          <p className="text-slate-200 text-[0.85rem] leading-snug group-hover:text-amber-100 transition-colors duration-150">
+            {article.headline}
+          </p>
+        </button>
+        {article.url && (
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 text-[0.8rem] text-slate-400 hover:text-amber-400 transition-colors duration-150 whitespace-nowrap"
+          >
+            {article.source} →
+          </a>
+        )}
+      </div>
+      {article.datetime > 0 && (
+        <p className="text-slate-500 text-[0.8rem] mt-1">{timeAgo(article.datetime)}</p>
+      )}
+      {expanded && article.summary && (
+        <p className="text-slate-400 text-[0.82rem] leading-relaxed mt-2 border-l-2 border-amber-400/20 pl-3">
+          {article.summary}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function NewsWidget({ ticker, articles, loading, error }) {
+  const count = articles?.length ?? 0;
+  const headerLabel = loading
+    ? "NEWS"
+    : count > 0
+    ? `NEWS — ${count} RESULTS`
+    : "NEWS";
+
+  return (
+    <div className="card animate-fade-up">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-0.5 h-3 rounded-full shrink-0 bg-slate-400" />
+        <p className="card-label">
+          {headerLabel}
+          {!loading && ticker && (
+            <span className="text-slate-600 font-normal"> — {ticker}</span>
+          )}
+        </p>
+      </div>
+
+      {loading && (
+        <div className="space-y-4">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="border-b border-white/[0.04] pb-4 last:border-0 last:pb-0 space-y-2">
+              <div className="h-3 bg-white/[0.06] rounded animate-pulse2" style={{ width: `${65 + i * 10}%` }} />
+              <div className="h-2.5 bg-white/[0.04] rounded animate-pulse2 w-1/4" />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && error && (
+        <div>
+          <p className="text-red-400 text-[0.85rem] font-semibold tracking-widest">⚠ NEWS UNAVAILABLE</p>
+          <p className="text-slate-500 text-[0.82rem] mt-1">could not reach news provider</p>
+        </div>
+      )}
+
+      {!loading && !error && count === 0 && (
+        <div>
+          <p className="text-slate-400 text-[0.85rem] tracking-widest uppercase">No news found — {ticker}</p>
+          <p className="text-slate-500 text-[0.82rem] mt-1">no recent coverage available</p>
+        </div>
+      )}
+
+      {!loading && !error && count > 0 && (
+        <div className="space-y-4">
+          {articles.map((article) => (
+            <NewsArticleRow key={article.url || article.headline} article={article} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Spinner() {
   return (
     <div className="flex flex-col items-center gap-3 py-20">
@@ -564,6 +666,12 @@ export default function App() {
   const [aiLoading, setAiLoading]   = useState(false);
   const [error, setError]           = useState(null);
   const [activeTab, setActiveTab]   = useState("structure");
+
+  // ── News ──
+  const [newsData, setNewsData]       = useState(null);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError]     = useState(null);
+  const newsAbortRef                  = useRef(null);
 
   // ── Chat ──
   const [chatOpen, setChatOpen] = useState(false);
@@ -607,12 +715,31 @@ export default function App() {
     }
   };
 
+  const loadNews = useCallback(async (sym) => {
+    if (newsAbortRef.current) newsAbortRef.current.abort();
+    const controller = new AbortController();
+    newsAbortRef.current = controller;
+
+    setNewsData(null);
+    setNewsError(null);
+    setNewsLoading(true);
+    try {
+      const data = await getNewsData(sym, { signal: controller.signal });
+      setNewsData(data);
+    } catch (e) {
+      if (e.name !== "AbortError") setNewsError(e.message);
+    } finally {
+      setNewsLoading(false);
+    }
+  }, []);
+
   const loadData = useCallback(async (sym) => {
     setLoading(true);
     setError(null);
     setMsData(null);
     setGexData(null);
     setAiAnalysis(null);
+    loadNews(sym);
     try {
       const { ms, gex } = await loadTickerData(sym);
       setMsData(ms);
@@ -622,7 +749,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadNews]);
 
   useEffect(() => { fetchKeyStatus(); loadData("AAPL"); }, []);
 
@@ -1027,6 +1154,14 @@ export default function App() {
                 </Card>
               </div>
             )}
+
+            {/* ── News ── */}
+            <NewsWidget
+              ticker={ticker}
+              articles={newsData?.articles}
+              loading={newsLoading}
+              error={newsError}
+            />
 
             {/* ── AI Brief ── */}
             {activeTab === "ai" && (

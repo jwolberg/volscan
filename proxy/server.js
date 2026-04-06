@@ -3,7 +3,22 @@ console.log("[env] loaded from:", require("path").resolve(".env"));
 console.log
 console.log("[env] ANTHROPIC_API_KEY:", process.env.ANTHROPIC_API_KEY ? "found" : "NOT FOUND");
 const express = require("express");
-const cors = require("cors");
+const cors    = require("cors");
+const fs      = require("fs");
+const path    = require("path");
+
+function persistToEnv(key, value) {
+  const envPath = path.resolve(".env");
+  let content = "";
+  try { content = fs.readFileSync(envPath, "utf8"); } catch {}
+  const lines = content.split("\n");
+  const idx   = lines.findIndex(l => l.startsWith(`${key}=`));
+  const entry = `${key}=${value}`;
+  if (idx >= 0) lines[idx] = entry;
+  else lines.push(entry);
+  fs.writeFileSync(envPath, lines.join("\n"), "utf8");
+  console.log(`[env] persisted ${key} to .env`);
+}
 
 const app = express();
 app.use(cors());
@@ -14,6 +29,7 @@ let TV_API_KEY        = process.env.TV_API_KEY        || "";
 let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const TV_DEMO         = (process.env.TV_DEMO || "").trim() === "1";
 const TV_BASE         = "https://stocks.tradingvolatility.net/api/v2";
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY   || "";
 
 console.log("[config] TV_DEMO Mode:", TV_DEMO ? "Demo mode ON. Tickers limited" : "OFF (valid TV_API_KEY required)");
 
@@ -37,8 +53,8 @@ app.get("/", (_req, res) => {
 // POST /keys  { tv?: string, anthropic?: string }  → set keys for this session
 app.post("/keys", (req, res) => {
   const { tv, anthropic } = req.body || {};
-  if (tv        !== undefined) TV_API_KEY        = tv.trim();
-  if (anthropic !== undefined) ANTHROPIC_API_KEY = anthropic.trim();
+  if (tv        !== undefined) { TV_API_KEY        = tv.trim();        persistToEnv("TV_API_KEY",        TV_API_KEY);        }
+  if (anthropic !== undefined) { ANTHROPIC_API_KEY = anthropic.trim(); persistToEnv("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY); }
   console.log("[keys] updated — TV:", TV_API_KEY ? `${TV_API_KEY.slice(0,4)}…` : "cleared",
               "| Anthropic:", ANTHROPIC_API_KEY ? `${ANTHROPIC_API_KEY.slice(0,8)}…` : "cleared");
   res.json({
@@ -147,6 +163,45 @@ app.post("/anthropic", async (req, res) => {
   }
 
   res.status(r.status).json(data);
+});
+
+// ── News proxy (Finnhub) ──────────────────────────────────────────────────────
+const TICKER_RE = /^[A-Z0-9.^-]{1,10}$/i;
+
+app.get("/news/:ticker", async (req, res) => {
+  if (!FINNHUB_API_KEY) {
+    return res.status(503).json({ error: "FINNHUB_API_KEY not configured" });
+  }
+  const { ticker } = req.params;
+  if (!TICKER_RE.test(ticker)) {
+    return res.status(400).json({ error: "Invalid ticker" });
+  }
+  const to   = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  try {
+    const url = `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(ticker)}&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      console.error("[news] Finnhub error:", r.status, text.slice(0, 200));
+      return res.status(r.status).json({ error: `News provider returned HTTP ${r.status}` });
+    }
+    const data = await r.json();
+    const articles = (Array.isArray(data) ? data : [])
+      .sort((a, b) => (b.datetime || 0) - (a.datetime || 0))
+      .slice(0, 5)
+      .map(({ headline, summary, url: link, source, datetime }) => ({
+        headline: headline || "",
+        summary:  summary  || "",
+        url:      link     || "",
+        source:   source   || "",
+        datetime: datetime || 0,
+      }));
+    res.json({ articles });
+  } catch (err) {
+    console.error("[news]", err.message);
+    res.status(500).json({ error: "News fetch failed" });
+  }
 });
 
 const PORT = process.env.PORT || 3001;
