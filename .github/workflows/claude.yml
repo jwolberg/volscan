@@ -12,19 +12,29 @@ on:
 
 jobs:
   claude:
-    # Only act when @claude is explicitly mentioned, so unrelated issue/PR
-    # activity doesn't spend Actions minutes or API tokens.
+    # Gate on BOTH an explicit @claude mention (cost) AND a trusted author
+    # association (security). The mention check alone is only a cost filter —
+    # anyone can type "@claude" — so without the author_association check an
+    # outside user could drive this write-privileged job via prompt injection.
     if: |
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude')) ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+      (github.event_name == 'issues' &&
+        contains(github.event.issue.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)) ||
+      (github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@claude') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association))
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # only if @claude pushes commits/branches; otherwise use `read`
       pull-requests: write
       issues: write
-      id-token: write
+      # id-token: write  # dropped — only needed for cloud OIDC federation
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
